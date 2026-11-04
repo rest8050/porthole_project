@@ -1,0 +1,7 @@
+dataset/
+runs/
+*.zip
+*.log
+*.pt
+__pycache__/
+manual_*.jpg
