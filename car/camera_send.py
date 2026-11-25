@@ -16,9 +16,14 @@ TIMEOUT = 10  # s; inference on the server can be slow
 
 
 def send(server, jpeg, captured_at, event_id):
+    return post_image(f"{server.rstrip('/')}/api/detect",
+                      {"event_id": event_id, "captured_at": captured_at}, jpeg)
+
+
+def post_image(url, fields, jpeg):
     boundary = uuid.uuid4().hex
     body = b""
-    for name, value in (("event_id", event_id), ("captured_at", captured_at)):
+    for name, value in fields.items():
         body += (f"--{boundary}\r\nContent-Disposition: form-data; "
                  f'name="{name}"\r\n\r\n{value}\r\n').encode()
     body += (f"--{boundary}\r\nContent-Disposition: form-data; "
@@ -26,7 +31,7 @@ def send(server, jpeg, captured_at, event_id):
              "Content-Type: image/jpeg\r\n\r\n").encode()
     body += jpeg + f"\r\n--{boundary}--\r\n".encode()
     request = urllib.request.Request(
-        f"{server.rstrip('/')}/api/detect", data=body,
+        url, data=body,
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:

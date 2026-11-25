@@ -16,6 +16,7 @@ def detect(
     captured_at: Annotated[AwareDatetime, Form()],
     lat: Annotated[float | None, Form(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Form(ge=-180, le=180)] = None,
+    save: Annotated[bool, Form(description="false면 추론만 하고 저장 안 함")] = True,
 ):
     service = request.app.state.detect_service
     if service is None:
@@ -24,6 +25,6 @@ def detect(
     if len(content) > MAX_IMAGE:
         raise HTTPException(413, "이미지는 10MB 이하여야 합니다.")
     try:
-        return service.detect(event_id, captured_at, lat, lon, content)
+        return service.detect(event_id, captured_at, lat, lon, content, save)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

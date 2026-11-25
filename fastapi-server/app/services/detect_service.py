@@ -47,17 +47,24 @@ class DetectService:
         # ponytail: 한 번에 1장씩 추론. 카메라가 여러 대가 되면 작업 큐로 변경.
         self.lock = threading.Lock()
 
-    def detect(self, event_id, captured_at, lat, lon, content):
-        """입력 오류는 ValueError. 포트홀일 때만 저장합니다."""
+    def infer(self, content: bytes) -> list[dict]:
+        """검증된 JPEG만 넘기세요."""
+        with self.lock:
+            return self.detector(content)
+
+    def detect(self, event_id, captured_at, lat, lon, content, save=True):
+        """입력 오류는 ValueError. save이고 포트홀일 때만 저장합니다."""
         if (lat is None) != (lon is None):
             raise ValueError("lat과 lon은 함께 보내야 합니다.")
         jpeg_size(content)
 
-        with self.lock:
-            detections = self.detector(content)
+        detections = self.infer(content)
 
-        if not detections:
-            return {"pothole": False, "detections": [], "id": None, "duplicate": False}
+        if not detections or not save:
+            return {
+                "pothole": bool(detections), "detections": detections,
+                "id": None, "duplicate": False,
+            }
 
         # ponytail: 저장할 때마다 새 포트홀. 같은 포트홀을 묶으려면 위치/추적 기준 필요.
         # event_id에서 만들므로 재전송해도 같은 값입니다.

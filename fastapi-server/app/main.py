@@ -6,10 +6,13 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
 from app.repositories.event_repository import EventRepository
+from app.repositories.inspection_repository import InspectionRepository
 from app.routers.detect_router import router as detect_router
 from app.routers.event_router import router as event_router, pothole_router
+from app.routers.inspection_router import router as inspection_router
 from app.services.detect_service import DetectService, YoloDetector
 from app.services.event_service import EventService
+from app.services.inspection_service import InspectionService
 
 INDEX_FILE = Path(__file__).resolve().parent / "index.html"
 
@@ -29,6 +32,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
             YoloDetector(model_path, float(os.getenv("DETECT_CONF", "0.5"))),
             app.state.event_service,
         ) if model_path else None
+        inspections = InspectionRepository(repository)
+        inspections.initialize()
+        # 모델이 없어도 finish와 조회는 동작합니다.
+        app.state.inspection_service = InspectionService(
+            inspections, app.state.detect_service
+        )
         yield
 
     application = FastAPI(
@@ -38,6 +47,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     )
 
     application.include_router(detect_router)
+    application.include_router(inspection_router)
     application.include_router(event_router)
     application.include_router(pothole_router)
 
