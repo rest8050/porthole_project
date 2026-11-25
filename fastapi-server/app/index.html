@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>포트홀 검출 대시보드</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f4f6fa; color: #182230; font-family: system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+  h1 { font-size: 24px; }
+  .box { background: #fff; border: 1px solid #e0e5ee; border-radius: 12px; padding: 16px; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .summary span { color: #586579; font-size: 14px; }
+  .summary strong { display: block; margin-top: 6px; font-size: 24px; }
+  form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 12px 0; }
+  label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+  input, button { font: inherit; padding: 8px 12px; border: 1px solid #c6cfdd; border-radius: 7px; }
+  button { background: #2457d6; color: #fff; border: 0; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  #cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .card { display: block; width: 100%; padding: 0; overflow: hidden; text-align: left;
+          background: #fff; color: inherit; border: 1px solid #e0e5ee; border-radius: 10px; }
+  .card img { display: block; width: 100%; height: 160px; object-fit: contain; background: #e9edf4; }
+  .card div { padding: 10px; font-size: 13px; line-height: 1.7; white-space: pre-line; }
+  nav { display: flex; justify-content: center; gap: 16px; align-items: center; margin: 20px 0; }
+  dialog { width: min(900px, 96vw); max-height: 94vh; border: 0; border-radius: 12px; padding: 16px; }
+  dialog::backdrop { background: rgb(0 0 0 / .6); }
+  dialog svg { display: block; width: 100%; max-height: 48vh; }
+  #strip { display: flex; gap: 8px; overflow-x: auto; padding: 10px 0; }
+  #strip button { flex: 0 0 auto; padding: 4px; background: #fff; color: inherit;
+                  border: 2px solid #e0e5ee; font-size: 12px; }
+  #strip button[aria-pressed="true"] { border-color: #2457d6; }
+  #strip img { display: block; width: 96px; height: 72px; object-fit: contain; }
+  #info { white-space: pre-line; line-height: 1.7; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <h1>포트홀 검출 대시보드</h1>
+
+  <div class="summary">
+    <div class="box"><span>오늘 새로 확인된 포트홀</span><strong id="today">-</strong></div>
+    <div class="box"><span>전체 포트홀</span><strong id="total">-</strong></div>
+    <div class="box"><span>마지막 수신</span><strong id="last">-</strong></div>
+  </div>
+
+  <form id="filter">
+    <label>시작 시각<input type="datetime-local" name="start"></label>
+    <label>종료 시각<input type="datetime-local" name="end"></label>
+    <label>최소 신뢰도 (0~1)<input type="number" name="min_confidence" min="0" max="1" step="0.05" value="0"></label>
+    <button type="submit">적용</button>
+    <button type="reset">초기화</button>
+  </form>
+
+  <p id="status" role="status">불러오는 중입니다.</p>
+  <div id="cards"></div>
+
+  <nav>
+    <button id="prev" type="button" disabled>이전</button>
+    <span id="page">1 / 1</span>
+    <button id="next" type="button" disabled>다음</button>
+  </nav>
+</main>
+
+<dialog id="detail">
+  <form method="dialog"><button>닫기</button></form>
+  <h2 id="title"></h2>
+  <p id="overview"></p>
+  <div id="view"></div>
+  <div id="strip"></div>
+  <p id="info"></p>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const PAGE = 24;
+let offset = 0;
+let query = {};       // 적용된 필터
+let latest = 0;       // 늦게 도착한 이전 응답을 버리기 위한 요청 번호
+let rendered = "";    // 목록이 그대로면 다시 그리지 않음
+
+const formatTime = (value) => value ? new Date(value).toLocaleString("ko-KR") : "-";
+const place = (e) => e.lat === null ? "위치 없음" : `${e.lat.toFixed(6)}, ${e.lon.toFixed(6)}`;
+const percent = (value) => `${(value * 100).toFixed(1)}%`;
+
+async function getJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+function thumbnail(eventKey, alt) {
+  // ponytail: 원본을 썸네일로 사용. 목록이 느려지면 서버에서 썸네일 생성.
+  const image = document.createElement("img");
+  image.src = `/api/events/${eventKey}/image`;
+  image.loading = "lazy";
+  image.alt = alt;
+  return image;
+}
+
+function card(pothole) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "card";
+
+  const text = document.createElement("div");
+  text.textContent = [
+    pothole.pothole_id,
+    `최고 ${percent(pothole.max_confidence)} · 평균 ${percent(pothole.avg_confidence)}`,
+    `관측 ${pothole.observation_count}건 · 최근 ${formatTime(pothole.last_seen)}`,
+    place(pothole),
+  ].join("\n");
+
+  button.append(thumbnail(pothole.best_event, `포트홀 ${pothole.pothole_id}`), text);
+  button.addEventListener("click", () => openPothole(pothole.pothole_id));
+  return button;
+}
+
+function svg(name, attributes) {
+  const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+  return element;
+}
+
+function showObservation(event) {
+  // SVG viewBox가 이미지 픽셀 좌표라서 화면 크기가 바뀌어도 박스가 맞습니다.
+  const root = svg("svg", { viewBox: `0 0 ${event.width} ${event.height}` });
+  root.append(svg("image", {
+    href: `/api/events/${event.id}/image`, width: event.width, height: event.height,
+  }));
+  const size = Math.max(14, event.width / 40);
+  event.detections.forEach((item, index) => {
+    const [x1, y1, x2, y2] = item.box;
+    root.append(svg("rect", {
+      x: x1, y: y1, width: x2 - x1, height: y2 - y1,
+      fill: "none", stroke: "#ff3030", "stroke-width": Math.max(2, event.width / 300),
+    }));
+    const label = svg("text", {
+      x: x1 + 4, y: y1 + size, "font-size": size,
+      fill: "#fff", stroke: "#000", "stroke-width": size / 6, "paint-order": "stroke",
+    });
+    label.textContent = `${index + 1}`;
+    root.append(label);
+  });
+  $("view").replaceChildren(root);
+
+  $("info").textContent = [
+    `관측 ID: ${event.event_id}`,
+    `촬영: ${formatTime(event.captured_at)}`,
+    `수신: ${formatTime(event.created_at)}`,
+    `위치: ${place(event)}`,
+    ...event.detections.map((item, i) => `검출 ${i + 1}: ${percent(item.confidence)}`),
+  ].join("\n");
+}
+
+async function openPothole(id) {
+  let pothole;
+  try {
+    pothole = await getJson(`/api/potholes/${encodeURIComponent(id)}`);
+  } catch (error) {
+    $("status").textContent = `상세 조회 실패 (${error.message})`;
+    return;
+  }
+
+  $("title").textContent = pothole.pothole_id;
+  $("overview").textContent =
+    `관측 ${pothole.observation_count}건 · 최고 ${percent(pothole.max_confidence)}` +
+    ` · 평균 ${percent(pothole.avg_confidence)}` +
+    ` · ${formatTime(pothole.first_seen)} ~ ${formatTime(pothole.last_seen)}`;
+
+  const buttons = pothole.observations.map((observation) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    const score = document.createElement("span");
+    score.textContent = percent(observation.max_confidence);
+    button.append(thumbnail(observation.id, `관측 ${observation.event_id}`), score);
+    button.addEventListener("click", () => select(observation, button));
+    return button;
+  });
+
+  function select(observation, button) {
+    buttons.forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+    showObservation(observation);
+  }
+
+  $("strip").replaceChildren(...buttons);
+  const best = pothole.observations.findIndex((o) => o.id === pothole.best_event);
+  select(pothole.observations[best], buttons[best]);
+  $("detail").showModal();
+}
+
+async function load() {
+  const request = ++latest;
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const params = new URLSearchParams({ ...query, limit: PAGE, offset });
+
+  try {
+    const [list, summary] = await Promise.all([
+      getJson(`/api/potholes?${params}`),
+      getJson(`/api/potholes/summary?since=${midnight.toISOString()}`),
+    ]);
+    if (request !== latest) return;
+
+    $("today").textContent = summary.new_count;
+    $("total").textContent = summary.total;
+    $("last").textContent = formatTime(summary.last_received_at);
+
+    const signature = JSON.stringify(list);
+    if (signature !== rendered) {
+      rendered = signature;
+      $("cards").replaceChildren(...list.items.map(card));
+    }
+
+    const pages = Math.max(1, Math.ceil(list.total / PAGE));
+    $("page").textContent = `${offset / PAGE + 1} / ${pages}`;
+    $("prev").disabled = offset === 0;
+    $("next").disabled = offset + PAGE >= list.total;
+    $("status").textContent = list.total === 0
+      ? "조건에 맞는 포트홀이 없습니다."
+      : `포트홀 ${list.total}개 · 최근 관측순 · 5초마다 갱신`;
+  } catch (error) {
+    if (request === latest) {
+      $("status").textContent = `조회 실패 (${error.message}). 화면의 값은 이전 조회 결과일 수 있습니다.`;
+    }
+  }
+}
+
+$("filter").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  query = { min_confidence: form.get("min_confidence") || 0 };
+  if (form.get("start")) query.start = new Date(form.get("start")).toISOString();
+  if (form.get("end")) {
+    // 분 단위 입력이므로 선택한 분 전체를 포함
+    query.end = new Date(new Date(form.get("end")).getTime() + 59999).toISOString();
+  }
+  offset = 0;
+  load();
+});
+$("filter").addEventListener("reset", () => { query = {}; offset = 0; load(); });
+$("prev").addEventListener("click", () => { offset = Math.max(0, offset - PAGE); load(); });
+$("next").addEventListener("click", () => { offset += PAGE; load(); });
+
+(async function poll() {
+  if (!document.hidden) await load();
+  setTimeout(poll, 5000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# No authentication: localhost only by default.
+# To let the Pi connect over a trusted LAN, set the BIND_ADDR shell variable to the PC's LAN IP.
+services:
+  api:
+    build: ./fastapi-server
+    ports: ["${BIND_ADDR:-127.0.0.1}:8000:8000"]
+    environment:
+      DB_PATH: /app/data/server.db
+    volumes:
+      - api-data:/app/data # named volume: SQLite locking is unreliable on Windows bind mounts
+    restart: unless-stopped
+
+volumes:
+  api-data:

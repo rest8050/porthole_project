@@ -5,3 +5,4 @@ runs/
 *.pt
 __pycache__/
 manual_*.jpg
+lead2/
