@@ -6,7 +6,9 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
 from app.repositories.event_repository import EventRepository
+from app.routers.detect_router import router as detect_router
 from app.routers.event_router import router as event_router, pothole_router
+from app.services.detect_service import DetectService, YoloDetector
 from app.services.event_service import EventService
 
 INDEX_FILE = Path(__file__).resolve().parent / "index.html"
@@ -21,6 +23,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         repository.initialize()
         app.state.event_service = EventService(repository)
+        # MODEL_PATH가 없으면 /api/detect만 503이고 나머지 API는 동작합니다.
+        model_path = os.getenv("MODEL_PATH")
+        app.state.detect_service = DetectService(
+            YoloDetector(model_path, float(os.getenv("DETECT_CONF", "0.5"))),
+            app.state.event_service,
+        ) if model_path else None
         yield
 
     application = FastAPI(
@@ -29,6 +37,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
+    application.include_router(detect_router)
     application.include_router(event_router)
     application.include_router(pothole_router)
 

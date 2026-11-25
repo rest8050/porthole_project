@@ -31,6 +31,8 @@ def jpeg_size(content: bytes) -> tuple[int, int]:
     except (
         OSError,
         SyntaxError,
+        # ultralytics가 Image.open을 바꿔, 읽지 못하면 pi_heif를 불러오려 합니다.
+        ImportError,
         Image.DecompressionBombError,
         Image.DecompressionBombWarning,
     ) as exc:

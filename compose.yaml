@@ -6,8 +6,11 @@ services:
     ports: ["${BIND_ADDR:-127.0.0.1}:8000:8000"]
     environment:
       DB_PATH: /app/data/server.db
+      MODEL_PATH: /app/models/best.pt
+      DETECT_CONF: ${DETECT_CONF:-0.5}
     volumes:
       - api-data:/app/data # named volume: SQLite locking is unreliable on Windows bind mounts
+      - ./runs/detect/runs/train/trial_gpu/weights/best.pt:/app/models/best.pt:ro
     restart: unless-stopped
 
 volumes:

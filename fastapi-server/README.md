@@ -11,6 +11,8 @@
 믿을 수 있는 내부망의 Pi를 받으려면 BIND_ADDR 환경변수에 PC의 내부망 IP를 지정하세요.
 
 ## API
+- POST /api/detect : YOLO 추론 (multipart: image, event_id, captured_at, lat, lon). 포트홀이면 저장.
+  응답 {pothole, detections, id, duplicate}. 모델은 compose.yaml의 best.pt, 기준값은 DETECT_CONF(기본 0.5)
 - POST /api/events : 관측 1건 저장 (multipart: image, pothole_id, event_id, captured_at, detections, lat, lon)
 - GET /api/events/{id}/image : 관측 이미지
 - GET /api/potholes : 포트홀 목록
