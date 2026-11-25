@@ -15,15 +15,23 @@
 
 쿼리 문자열의 시간대에 `+`를 쓸 때는 `%2B`로 인코딩하거나 `Z`(UTC)를 사용합니다.
 
-| 방식 | 경로 | 용도 |
-|---|---|---|
-| POST | `/api/detect` | YOLO 추론, 포트홀이면 저장 |
-| POST | `/api/events` | 추론이 끝난 관측 1건 저장 |
-| GET | `/api/events/{key}/image` | 관측 이미지 |
-| GET | `/api/potholes` | 포트홀 목록 |
-| GET | `/api/potholes/summary` | 요약 (주행 정지 신호) |
-| GET | `/api/potholes/{pothole_id}` | 포트홀 상세 |
-| GET | `/` | 대시보드 (HTML) |
+| 방식 | 경로 | 용도 | 예시 |
+|---|---|---|---|
+| POST | `/api/detect` | YOLO 추론, 포트홀이면 저장 | `curl -F image=@frame.jpg -F event_id=test-detect-1 -F captured_at=2026-11-25T12:00:00+09:00 http://172.16.46.41:8000/api/detect` |
+| POST | `/api/events` | 추론이 끝난 관측 1건 저장 | `curl -F image=@frame.jpg -F pothole_id=test-pothole-1 -F event_id=test-event-1 -F captured_at=2026-11-25T12:00:00+09:00 --form-string 'detections=[{"confidence":0.9,"box":[1,1,50,50]}]' http://172.16.46.41:8000/api/events` |
+| GET | `/api/events/{key}/image` | 관측 이미지 | `curl -o event.jpg http://172.16.46.41:8000/api/events/1/image` |
+| GET | `/api/potholes` | 포트홀 목록 | `curl "http://172.16.46.41:8000/api/potholes?limit=5&min_confidence=0.5"` |
+| GET | `/api/potholes/summary` | 요약 (주행 정지 신호) | `curl "http://172.16.46.41:8000/api/potholes/summary?since=2000-01-01T00:00:00Z"` |
+| GET | `/api/potholes/{pothole_id}` | 포트홀 상세 | `curl http://172.16.46.41:8000/api/potholes/sample-9143102f-f70f-4b17-8b3b-7beb444157d9` |
+| GET | `/` | 대시보드 (HTML) | `curl http://172.16.46.41:8000/` |
+
+예시 사용법:
+
+- **라즈베리파이 / Linux / Git Bash용**입니다. Windows PowerShell에서는 POST 예시의 따옴표와 `curl` 별칭 때문에 그대로 동작하지 않을 수 있습니다.
+- `172.16.46.41`은 작성 당시의 서버 주소입니다. 서버 IP가 바뀌면 이 부분을 바꿉니다.
+- POST 예시는 현재 폴더에 `frame.jpg`(JPEG, 가로·세로 50픽셀 이상)가 있어야 합니다.
+- **POST 예시는 실제 데이터를 저장하며, 새로 저장되면 주행 중인 차가 멈춥니다.** (`/api/detect`는 포트홀을 감지했을 때만) 같은 `event_id`로 다시 실행하면 새로 저장하지 않으므로, 새 관측은 `event_id`를 바꿉니다.
+- 이미지의 `1`과 상세의 `pothole_id`는 작성 당시 저장돼 있던 값입니다. 없으면 404이며, 목록 조회 결과의 `best_event`, `pothole_id`로 바꿉니다.
 
 ## 2. POST /api/detect
 
